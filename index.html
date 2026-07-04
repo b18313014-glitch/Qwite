@@ -71,7 +71,7 @@
 
     <div id="auth-screen" class="screen active">
         <h2>ДОСТУП ОГРАНИЧЕН</h2>
-        <p>Для активации терминала выполните вход.</p>
+        <p>Для активации terminal выполните вход.</p>
         <button class="btn-yandex" onclick="loginWithYandex()">Войти с Яндекс ID</button>
     </div>
 
@@ -88,7 +88,6 @@
         </div>
         <div id="card-waiting-msg" class="hidden" style="margin-top: 20px; text-align: center;">
             <h3>ПРИЛОЖИТЕ КАРТУ К ТЕРМИНАЛУ...</h3>
-            <p style="color: #555;">[Имитация прикладывания: <span style="text-decoration:underline; cursor:pointer; color:#00ff66;" onclick="simulateCardTap('uid_test_123', 'MIR')">Новая карта</span> | <span style="text-decoration:underline; cursor:pointer; color:#00ff66;" onclick="simulateCardTap('uid_test_123', 'MIR')">Повторно</span> | <span style="text-decoration:underline; cursor:pointer; color:#ff3333;" onclick="simulateCardTap(null, null)">Ошибка чтения</span>]</p>
         </div>
     </div>
 
@@ -103,7 +102,7 @@
     </div>
 
     <script>
-        // Инициализация Supabase (Ключи уже подгружаются автоматически из настроек)
+        // Инициализация Supabase
         const supabase = supabase.createClient("https://tjmavzfleliaqanyxkjs.supabase.co", "ТВОЙ_ANON_KEY");
 
         const promoStrings = [
@@ -114,14 +113,14 @@
         let promoIndex = 0;
         let promoInterval;
 
-        // ПРОВЕРКА ИДЕНТИФИКАЦИОННОГО ТОКЕНА ПРИ СТАРТЕ
+        // ПРОВЕРКА ИДЕНТИФИКАЦИОННОГО ТОКЕНА ЯНДЕКСА
         async function checkTerminalSession() {
             const { data: { session } } = await supabase.auth.getSession();
             if (session) {
-                // Токен есть, устройство идентифицировано — сразу в бой
+                // Идентификация пройдена — включаем систему и нативный NFC
                 startTerminalMode();
             } else {
-                // Токена нет — жесткий блок экрана
+                // Токена нет — блокируем интерфейс экраном логина
                 changeScreen('auth-screen');
             }
         }
@@ -139,6 +138,8 @@
 
         function startTerminalMode() {
             changeScreen('idle-screen');
+            initNativeNfc(); // Запускаем прослушивание железной антенны
+            
             document.getElementById('promo-ticker').innerText = promoStrings[promoIndex];
             promoInterval = setInterval(() => {
                 promoIndex = (promoIndex + 1) % promoStrings.length;
@@ -146,7 +147,7 @@
             }, 4000);
         }
 
-        // Прилёт внешней команды (терминал переходит в режим ожидания оплаты)
+        // Перевод приложения в режим ожидания оплаты (по внешней команде)
         function triggerPaymentCommand() {
             changeScreen('payment-screen');
             document.getElementById('options-block').classList.remove('hidden');
@@ -155,28 +156,28 @@
 
         function selectPayment(type) {
             if (type === 'card') {
-                // Медленно убираем биометрию, ждем только карту
+                // Медленно убираем биометрию, ждем касания чипа карты
                 document.getElementById('options-block').classList.add('hidden');
                 document.getElementById('card-waiting-msg').classList.remove('hidden');
             }
         }
 
-        // ОБРАБОТКА ФИЗИЧЕСКОГО ИЛИ ИМИТИРОВАННОГО КАСАНИЯ КАРТЫ
+        // НАПРАВЛЕННАЯ СИСТЕМНАЯ РАБОТА С ФИЗИЧЕСКИМ ЧИПОМ КАРТЫ
         async function handleCardTap(cardUid, cardType) {
             try {
-                // Сценарий: ОШИБКА ЧТЕНИЯ КАРТЫ (пакет данных битый или пустой)
+                // Если данные с антенны не пришли или чтение прервалось
                 if (!cardUid || !cardType) {
                     throw new Error("CardReadError");
                 }
 
-                // Если прочитано успешно: Анимация БУМ! и вылет карты
+                // Успешно: Анимация БУМ! Карточка вылетает на экране приложения
                 changeScreen('status-screen');
                 document.getElementById('status-title').className = "status-msg";
                 document.getElementById('status-title').innerText = "ПРИНЯТО";
                 document.getElementById('card-brand').innerText = cardType;
                 document.getElementById('virtual-card').classList.add('boom');
 
-                // Проверяем наличие аккаунта под эту ячейку карты в Supabase
+                // Ищем ячейку этой карты в таблице Supabase
                 let { data: account } = await supabase
                     .from('virtual_cards')
                     .select('*')
@@ -184,13 +185,13 @@
                     .single();
 
                 if (!account) {
-                    // ПЕРВЫЙ РАЗ: Создаем внутреннюю учетную запись со стартовым балансом 0
+                    // ПЕРВОЕ ПРИКЛАДЫВАНИЕ: Создаем внутренний аккаунт банка с балансом 0
                     await supabase.from('virtual_cards').insert([{ card_uid: cardUid, card_type: cardType, balance: 0 }]);
                     setTimeout(() => {
                         document.getElementById('status-title').innerText = "СТРАНИЦА СОЗДАНА";
                     }, 1200);
                 } else {
-                    // ВТОРОЙ РАЗ: Проверяем созданный баланс (он равен 0)
+                    // ПОВТОРНОЕ ПРИКЛАДЫВАНИЕ: Денег нет, выводим ошибку баланса
                     setTimeout(() => {
                         document.getElementById('status-title').className = "status-msg error-text";
                         document.getElementById('status-title').innerText = "НЕДОСТАТОЧНО СРЕДСТВ";
@@ -198,30 +199,34 @@
                 }
 
             } catch (error) {
-                // ЕСЛИ ПРОИЗОШЛА ОШИБКА ЧТЕНИЯ КАРТЫ
+                // КРИТИЧЕСКАЯ ОШИБКА ЧТЕНИЯ АНТЕННЫ
                 changeScreen('status-screen');
                 document.getElementById('virtual-card').classList.remove('boom');
                 document.getElementById('status-title').className = "status-msg error-text";
                 document.getElementById('status-title').innerText = "Ошибка чтения карты. Попробуйте еще раз";
                 
-                // Автоматически даём второй шанс (возврат на экран ожидания карты через 4 сек)
+                // Даём вторую попытку: возвращаем экран ожидания карты через 4 секунды
                 setTimeout(() => {
                     triggerPaymentCommand();
                 }, 4000);
             }
         }
 
-        // Функция-заглушка для ручных тестов на экране
-        function simulateCardTap(uid, type) {
-            handleCardTap(uid, type);
+        // СВЯЗУЮЩИЙ МОСТ МЕЖДУ НАШИМ ПРИЛОЖЕНИЕМ И ЖЕЛЕЗОМ (NFC-АНТЕННОЙ)
+        function initNativeNfc() {
+            if (window.AndroidNFC) {
+                // Регистрируем прямой системный обработчик касания
+                window.AndroidNFC.onTagDiscovered((payload) => {
+                    // Передаем физический UID и считанную платежную систему напрямую в JS
+                    handleCardTap(payload.uid, payload.type);
+                });
+            } else {
+                // Если приложение только запускается, ищем антенну каждые полсекунды
+                setTimeout(initNativeNfc, 500);
+            }
         }
 
-        function changeScreen(screenId) {
-            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-            document.getElementById(screenId).classList.add('active');
-        }
-
-        // Точка старта приложения
+        // Точка старта всего интерфейса приложения
         checkTerminalSession();
     </script>
 </body>
