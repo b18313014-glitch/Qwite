@@ -1,1 +1,121 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Qwit Terminal</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            background-color: #05070a;
+            color: #00ff66;
+            font-family: 'Courier New', Courier, monospace;
+            margin: 0; padding: 0; overflow: hidden; height: 100vh;
+        }
+        
+        /* Плавные переходы между экранами */
+        .screen {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.8s ease-in-out;
+            padding: 20px;
+        }
+        .screen.active { opacity: 1; pointer-events: auto; }
 
+        /* Экран авторизации */
+        .btn-yandex {
+            background-color: #ffcc00; color: #000; border: none;
+            padding: 18px 36px; font-size: 20px; font-weight: bold;
+            cursor: pointer; border-radius: 6px; margin-top: 20px;
+            font-family: sans-serif; transition: transform 0.2s;
+        }
+        .btn-yandex:active { transform: scale(0.95); }
+
+        /* Бегущая реклама */
+        .promo-text { font-size: 36px; font-weight: bold; text-align: center; }
+
+        /* Ошибки */
+        .error-text { color: #ff3333; font-size: 24px; text-shadow: 0 0 10px rgba(255,51,51,0.5); }
+    </style>
+</head>
+<body>
+
+    <div id="auth-screen" class="screen active">
+        <h2>ДОСТУП ОГРАНИЧЕН</h2>
+        <p>Для активации терминала выполните вход.</p>
+        <button class="btn-yandex" onclick="loginWithYandex()">Войти с Яндекс ID</button>
+    </div>
+
+    <div id="idle-screen" class="screen">
+        <div class="promo-text" id="promo-ticker">ЗАГРУЗКА РЕКЛАМЫ...</div>
+    </div>
+
+    <script>
+        // Инициализируем Supabase (вставь сюда свой anon-ключ проекта)
+        const SUPABASE_URL = "https://tjmavzfleliaqanyxkjs.supabase.co";
+        const SUPABASE_ANON_KEY = "ТВОЙ_ANON_PUBLIC_KEY"; 
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // Массив нашей крутой рекламы
+        const promoStrings = [
+            "У НАС МНОГО СКИДОК!",
+            "СОТРУДНИЧАЕМ СО ВСЕМИ БАНКАМИ!",
+            "ВСЁ САМОЕ КРУТОЕ — ТОЛЬКО У НАС!"
+        ];
+        let promoIndex = 0;
+
+        // ПРОВЕРКА ТОКЕНА ИДЕНТИФИКАЦИИ ПРИ ЗАПУСКЕ
+        async function checkTerminalSession() {
+            // Смотрим, выдавал ли Supabase токен этому устройству ранее
+            const { data: { session } } = await supabase.auth.getSession();
+            
+            if (session) {
+                // Токен есть! Пропускаем регистрацию и включаем рекламу
+                startTerminalMode();
+            } else {
+                // Токена нет — оставляем экран авторизации Яндекса
+                changeScreen('auth-screen');
+            }
+        }
+
+        // Кнопка входа через Яндекс
+        async function loginWithYandex() {
+            await supabase.auth.signInWithOAuth({
+                provider: 'yandex',
+                options: {
+                    redirectTo: 'https://www.terminal-qwit.duckdns.org/'
+                }
+            });
+        }
+
+        // Активация рабочего режима терминала
+        function startTerminalMode() {
+            changeScreen('idle-screen');
+            runPromoRotation();
+        }
+
+        // Ротация баннеров рекламы
+        function runPromoRotation() {
+            document.getElementById('promo-ticker').innerText = promoStrings[promoIndex];
+            setInterval(() => {
+                promoIndex = (promoIndex + 1) % promoStrings.length;
+                document.getElementById('promo-ticker').innerText = promoStrings[promoIndex];
+            }, 4000);
+        }
+
+        // Вспомогательная функция смены экранов
+        function changeScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+        }
+
+        // Запускаем проверку токена сразу при открытии страницы
+        checkTerminalSession();
+    </script>
+</body>
+</html>
