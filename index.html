@@ -11,8 +11,20 @@
         .screen { position: absolute; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 30px; transition: all 0.8s ease-in-out; opacity: 0; pointer-events: none; }
         .screen.active { opacity: 1; pointer-events: auto; }
 
-        /* 1. Рекламный экран (Ожидание) */
-        #screen-ads { background: radial-gradient(circle, #1a1a24 0%, #0b0b0e 100%); text-align: center; }
+        /* 1. Рекламный экран с живым неоновым переливом фона */
+        #screen-ads { 
+            background: linear-gradient(45deg, #0b0b0e, #14142b, #221135, #0b0b0e);
+            background-size: 400% 400%;
+            animation: gradientBg 12s ease infinite;
+            text-align: center; 
+        }
+
+        @keyframes gradientBg {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
         .ad-slider { width: 100%; max-width: 400px; height: 300px; position: relative; }
         .ad-slide { position: absolute; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; opacity: 0; transition: opacity 0.6s ease; text-align: center; }
         .ad-slide.show { opacity: 1; }
@@ -136,7 +148,7 @@
             document.getElementById(screenId).classList.add('active');
         }
 
-        // Эмуляция получения запроса от Админки (вызов кнопками для тестов)
+        // Эмуляция получения запроса от Админки
         function receivePaymentRequest(amount) {
             document.getElementById('display-price').innerText = amount + ' ₽';
             showScreen('screen-loading');
@@ -145,8 +157,7 @@
         // Имитация прикладывания или выбора оплаты
         function triggerPayment(method) {
             if (method === 'bio' || method === 'card_auto') {
-                // Имитируем, что сработала карта Сбера (для примера)
-                animateCardExplosion('Sber', 'green', 'МИР');
+                animateCardExplosion('Сбербанк', 'sber', 'МИР');
             }
         }
 
@@ -157,30 +168,26 @@
             const wave = document.getElementById('wave');
             const card = document.getElementById('card-element');
             
-            // Настройка цвета взрыва
-            let hexColor = '#1f9a55'; // Сбер по дефолту
-            if (colorStyle === 'orange') hexColor = '#ef3124';
-            if (colorStyle === 'black') hexColor = '#333333';
+            let hexColor = '#1f9a55'; 
+            if (colorStyle === 'alfa') hexColor = '#ef3124';
+            if (colorStyle === 'tbank') hexColor = '#333333';
             if (colorStyle === 'amex') hexColor = '#90a4ae';
             
             wave.style.setProperty('--wave-color', hexColor);
             wave.style.animation = 'none';
-            wave.offsetHeight; // триггер рефлоу
+            wave.offsetHeight; 
             wave.style.animation = 'explode 0.8s ease-out forwards';
 
-            // Настройка карты
             card.className = 'card-view bank-' + colorStyle;
             document.getElementById('card-bank-name').innerText = bankName.toUpperCase();
             document.getElementById('card-sys-name').innerText = sysName;
 
-            // Через 2.5 секунды переливаем в экран ошибки "Недостаточно средств" (для второго раза)
             setTimeout(() => {
                 showScreen('screen-error');
                 setTimeout(() => {
                     document.getElementById('screen-error').classList.add('red-alert');
                 }, 100);
                 
-                // Через 4 секунды возвращаем в режим рекламы
                 setTimeout(() => {
                     document.getElementById('screen-error').classList.remove('red-alert');
                     showScreen('screen-ads');
@@ -188,13 +195,13 @@
             }, 2500);
         }
 
-        // ТЕСТОВЫЕ КЛАВИШИ НА КЛАВИАТУРЕ (для отладки на ПК):
+        // Клавиши для тестов на ПК:
         window.addEventListener('keydown', (e) => {
-            if (e.key === 'q') receivePaymentRequest(500); // Клавиша Q - прилетел счет на 500 рублей
-            if (e.key === '1') animateCardExplosion('Сбербанк', 'sber', 'МИР'); // Показать взрыв Сбера
-            if (e.key === '2') animateCardExplosion('Альфа-Банк', 'alfa', 'МИР'); // Показать взрыв Альфы
-            if (e.key === '3') animateCardExplosion('Т-Банк', 'tbank', 'МИР'); // Показать взрыв Т-Банка
-            if (e.key === '4') animateCardExplosion('Amex', 'amex', 'American Express'); // Показать взрыв Amex
+            if (e.key === 'q' || e.key === 'й') receivePaymentRequest(500); 
+            if (e.key === '1') animateCardExplosion('Сбербанк', 'sber', 'МИР'); 
+            if (e.key === '2') animateCardExplosion('Альфа-Банк', 'alfa', 'МИР'); 
+            if (e.key === '3') animateCardExplosion('Т-Банк', 'tbank', 'МИР'); 
+            if (e.key === '4') animateCardExplosion('Amex', 'amex', 'American Express'); 
         });
     </script>
 </body>
