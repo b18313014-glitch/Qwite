@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Qwit Terminal</title>
+    <title>Qwit Terminal App</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <style>
@@ -15,7 +15,7 @@
             margin: 0; padding: 0; overflow: hidden; height: 100vh;
         }
         
-        /* Плавные переходы между экранами */
+        /* Плавное переключение экранов */
         .screen {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -27,7 +27,7 @@
         }
         .screen.active { opacity: 1; pointer-events: auto; }
 
-        /* Экран авторизации */
+        /* Кнопка Яндекса */
         .btn-yandex {
             background-color: #ffcc00; color: #000; border: none;
             padding: 18px 36px; font-size: 20px; font-weight: bold;
@@ -36,11 +36,35 @@
         }
         .btn-yandex:active { transform: scale(0.95); }
 
-        /* Бегущая реклама */
-        .promo-text { font-size: 36px; font-weight: bold; text-align: center; }
+        /* Рекламный экран */
+        .promo-text { font-size: 36px; font-weight: bold; text-align: center; min-height: 50px; }
 
-        /* Ошибки */
-        .error-text { color: #ff3333; font-size: 24px; text-shadow: 0 0 10px rgba(255,51,51,0.5); }
+        /* Выбор оплаты */
+        .pay-options { display: flex; gap: 40px; margin-top: 30px; }
+        .pay-btn {
+            border: 2px solid #00ff66; background: transparent; color: #00ff66;
+            padding: 20px 40px; font-size: 22px; cursor: pointer; transition: all 0.3s;
+        }
+        .pay-btn:hover { background: #00ff66; color: #000; }
+        .hidden { display: none !important; }
+
+        /* Анимация БУМ! и вылет карты */
+        .card-container { position: relative; width: 340px; height: 210px; perspective: 1000px; margin-top: 30px; }
+        .bank-card {
+            width: 100%; height: 100%;
+            background: linear-gradient(135deg, #1f2937, #111827);
+            border-radius: 15px; border: 1px solid rgba(255,255,255,0.1);
+            padding: 20px; color: white; display: flex; flex-direction: column;
+            justify-content: space-between; box-shadow: 0 0 30px rgba(0,255,102,0.3);
+            transform: scale(0) rotateY(-180deg);
+            transition: transform 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .bank-card.boom { transform: scale(1) rotateY(0deg); }
+        .card-system { align-self: flex-end; font-weight: bold; font-style: italic; font-size: 26px; color: #ffaa00; }
+
+        /* Ошибки и статусы */
+        .status-msg { font-size: 28px; text-align: center; margin-bottom: 10px; }
+        .error-text { color: #ff3333; text-shadow: 0 0 10px rgba(255,51,51,0.5); }
     </style>
 </head>
 <body>
@@ -53,68 +77,151 @@
 
     <div id="idle-screen" class="screen">
         <div class="promo-text" id="promo-ticker">ЗАГРУЗКА РЕКЛАМЫ...</div>
+        <button style="margin-top: 40px; background: transparent; color: #555; border: 1px solid #555;" onclick="triggerPaymentCommand()">[Тест: Прилетела команда оплаты]</button>
+    </div>
+
+    <div id="payment-screen" class="screen">
+        <h2>ВЫ МОЖЕТЕ ОПЛАТИТЬ КАРТОЙ ИЛИ БИОМЕТРИЕЙ</h2>
+        <div class="pay-options" id="options-block">
+            <button class="pay-btn" onclick="selectPayment('card')">КАРТОЙ</button>
+            <button class="pay-btn" onclick="selectPayment('bio')">БИОМЕТРИЕЙ</button>
+        </div>
+        <div id="card-waiting-msg" class="hidden" style="margin-top: 20px; text-align: center;">
+            <h3>ПРИЛОЖИТЕ КАРТУ К ТЕРМИНАЛУ...</h3>
+            <p style="color: #555;">[Имитация прикладывания: <span style="text-decoration:underline; cursor:pointer; color:#00ff66;" onclick="simulateCardTap('uid_test_123', 'MIR')">Новая карта</span> | <span style="text-decoration:underline; cursor:pointer; color:#00ff66;" onclick="simulateCardTap('uid_test_123', 'MIR')">Повторно</span> | <span style="text-decoration:underline; cursor:pointer; color:#ff3333;" onclick="simulateCardTap(null, null)">Ошибка чтения</span>]</p>
+        </div>
+    </div>
+
+    <div id="status-screen" class="screen">
+        <div id="status-title" class="status-msg">ОБРАБОТКА...</div>
+        <div class="card-container">
+            <div id="virtual-card" class="bank-card">
+                <div style="font-size: 18px; letter-spacing: 2px;">**** **** **** ****</div>
+                <div id="card-brand" class="card-system">MIR</div>
+            </div>
+        </div>
     </div>
 
     <script>
-        // Инициализируем Supabase (вставь сюда свой anon-ключ проекта)
-        const SUPABASE_URL = "https://tjmavzfleliaqanyxkjs.supabase.co";
-        const SUPABASE_ANON_KEY = "ТВОЙ_ANON_PUBLIC_KEY"; 
-        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // Инициализация Supabase (Ключи уже подгружаются автоматически из настроек)
+        const supabase = supabase.createClient("https://tjmavzfleliaqanyxkjs.supabase.co", "ТВОЙ_ANON_KEY");
 
-        // Массив нашей крутой рекламы
         const promoStrings = [
             "У НАС МНОГО СКИДОК!",
             "СОТРУДНИЧАЕМ СО ВСЕМИ БАНКАМИ!",
             "ВСЁ САМОЕ КРУТОЕ — ТОЛЬКО У НАС!"
         ];
         let promoIndex = 0;
+        let promoInterval;
 
-        // ПРОВЕРКА ТОКЕНА ИДЕНТИФИКАЦИИ ПРИ ЗАПУСКЕ
+        // ПРОВЕРКА ИДЕНТИФИКАЦИОННОГО ТОКЕНА ПРИ СТАРТЕ
         async function checkTerminalSession() {
-            // Смотрим, выдавал ли Supabase токен этому устройству ранее
             const { data: { session } } = await supabase.auth.getSession();
-            
             if (session) {
-                // Токен есть! Пропускаем регистрацию и включаем рекламу
+                // Токен есть, устройство идентифицировано — сразу в бой
                 startTerminalMode();
             } else {
-                // Токена нет — оставляем экран авторизации Яндекса
+                // Токена нет — жесткий блок экрана
                 changeScreen('auth-screen');
             }
         }
 
-        // Кнопка входа через Яндекс
+        // Авторизация через кастомный провайдер Яндекса
         async function loginWithYandex() {
             await supabase.auth.signInWithOAuth({
-                provider: 'yandex',
+                provider: 'custom',
                 options: {
+                    targetProvider: 'yandex',
                     redirectTo: 'https://www.terminal-qwit.duckdns.org/'
                 }
             });
         }
 
-        // Активация рабочего режима терминала
         function startTerminalMode() {
             changeScreen('idle-screen');
-            runPromoRotation();
-        }
-
-        // Ротация баннеров рекламы
-        function runPromoRotation() {
             document.getElementById('promo-ticker').innerText = promoStrings[promoIndex];
-            setInterval(() => {
+            promoInterval = setInterval(() => {
                 promoIndex = (promoIndex + 1) % promoStrings.length;
                 document.getElementById('promo-ticker').innerText = promoStrings[promoIndex];
             }, 4000);
         }
 
-        // Вспомогательная функция смены экранов
+        // Прилёт внешней команды (терминал переходит в режим ожидания оплаты)
+        function triggerPaymentCommand() {
+            changeScreen('payment-screen');
+            document.getElementById('options-block').classList.remove('hidden');
+            document.getElementById('card-waiting-msg').classList.add('hidden');
+        }
+
+        function selectPayment(type) {
+            if (type === 'card') {
+                // Медленно убираем биометрию, ждем только карту
+                document.getElementById('options-block').classList.add('hidden');
+                document.getElementById('card-waiting-msg').classList.remove('hidden');
+            }
+        }
+
+        // ОБРАБОТКА ФИЗИЧЕСКОГО ИЛИ ИМИТИРОВАННОГО КАСАНИЯ КАРТЫ
+        async function handleCardTap(cardUid, cardType) {
+            try {
+                // Сценарий: ОШИБКА ЧТЕНИЯ КАРТЫ (пакет данных битый или пустой)
+                if (!cardUid || !cardType) {
+                    throw new Error("CardReadError");
+                }
+
+                // Если прочитано успешно: Анимация БУМ! и вылет карты
+                changeScreen('status-screen');
+                document.getElementById('status-title').className = "status-msg";
+                document.getElementById('status-title').innerText = "ПРИНЯТО";
+                document.getElementById('card-brand').innerText = cardType;
+                document.getElementById('virtual-card').classList.add('boom');
+
+                // Проверяем наличие аккаунта под эту ячейку карты в Supabase
+                let { data: account } = await supabase
+                    .from('virtual_cards')
+                    .select('*')
+                    .eq('card_uid', cardUid)
+                    .single();
+
+                if (!account) {
+                    // ПЕРВЫЙ РАЗ: Создаем внутреннюю учетную запись со стартовым балансом 0
+                    await supabase.from('virtual_cards').insert([{ card_uid: cardUid, card_type: cardType, balance: 0 }]);
+                    setTimeout(() => {
+                        document.getElementById('status-title').innerText = "СТРАНИЦА СОЗДАНА";
+                    }, 1200);
+                } else {
+                    // ВТОРОЙ РАЗ: Проверяем созданный баланс (он равен 0)
+                    setTimeout(() => {
+                        document.getElementById('status-title').className = "status-msg error-text";
+                        document.getElementById('status-title').innerText = "НЕДОСТАТОЧНО СРЕДСТВ";
+                    }, 1200);
+                }
+
+            } catch (error) {
+                // ЕСЛИ ПРОИЗОШЛА ОШИБКА ЧТЕНИЯ КАРТЫ
+                changeScreen('status-screen');
+                document.getElementById('virtual-card').classList.remove('boom');
+                document.getElementById('status-title').className = "status-msg error-text";
+                document.getElementById('status-title').innerText = "Ошибка чтения карты. Попробуйте еще раз";
+                
+                // Автоматически даём второй шанс (возврат на экран ожидания карты через 4 сек)
+                setTimeout(() => {
+                    triggerPaymentCommand();
+                }, 4000);
+            }
+        }
+
+        // Функция-заглушка для ручных тестов на экране
+        function simulateCardTap(uid, type) {
+            handleCardTap(uid, type);
+        }
+
         function changeScreen(screenId) {
             document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
             document.getElementById(screenId).classList.add('active');
         }
 
-        // Запускаем проверку токена сразу при открытии страницы
+        // Точка старта приложения
         checkTerminalSession();
     </script>
 </body>
